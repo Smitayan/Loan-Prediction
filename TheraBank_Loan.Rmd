@@ -1,0 +1,497 @@
+---
+title: "Thera Bank"
+output: html_notebook
+---
+
+Loading all necessary libraries
+```{r}
+library(psych)
+library(readxl)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(esquisse)
+library(dplyr)
+library(ROCR)
+library(ineq)
+library(InformationValue)
+library(corrplot)
+library(NbClust)
+library(cluster)
+library(clValid)
+library(factoextra)
+```
+
+setting up working directory and loading the data.
+```{r}
+setwd('D:/Smitayan/PGP BABI')
+TheraBank=read_excel('Thera Bank_Personal_Loan_Modelling-dataset-1.xlsx',sheet=2,col_names=T)
+```
+
+Reading top 5 rows of the dataset
+```{r}
+head(TheraBank)
+```
+
+Column Names:
+```{r}
+names(TheraBank)
+```
+
+Fixing column names
+```{r}
+colnames(TheraBank)=make.names(colnames(TheraBank))
+```
+
+Data Types
+```{r}
+str(TheraBank)
+```
+
+Summary of data
+```{r}
+summary(TheraBank)
+```
+
+#Data Cleansing: Null treatment, Outlier treatment
+```{r}
+sapply(TheraBank, function(x) sum(is.na(x)))
+```
+
+```{r}
+TheraBank$Family.members=replace(TheraBank$Family.members,is.na(TheraBank$Family.members),2)
+sapply(TheraBank, function(x) sum(is.na(x)))
+```
+
+Converting certain attributes to factors
+```{r}
+TheraBank$Education=as.factor(TheraBank$Education)
+TheraBank$Personal.Loan=as.factor(TheraBank$Personal.Loan)
+TheraBank$Securities.Account=as.factor(TheraBank$Securities.Account)
+TheraBank$CD.Account=as.factor(TheraBank$CD.Account)
+TheraBank$Online=as.factor(TheraBank$Online)
+TheraBank$CreditCard=as.factor(TheraBank$CreditCard)
+TheraBank$Family.members=as.factor(TheraBank$Family.members)
+```
+
+
+```{r}
+str(TheraBank)
+```
+
+Checking other statistics of the numerical data
+```{r}
+describe(TheraBank[-c(1,5,8,10,11,12,13,14)],quant = c(0.02,0.05,0.10,0.25,0.75,0.90,0.95,0.99))
+```
+
+Replacing records with negative experience levels with 0 years
+```{r}
+
+TheraBank$Experience..in.years.=ifelse(TheraBank$Experience..in.years.<quantile(TheraBank$Experience..in.years.,.02),quantile(TheraBank$Experience..in.years.,.02),TheraBank$Experience..in.years.)
+```
+
+EDA: Histograms and Boxplots
+```{r}
+par(mfrow=c(3,2))
+boxplot(TheraBank$Age..in.years.,xlab='Age',horizontal = T,col='orange')
+hist(TheraBank$Age..in.years.,xlab = 'Age',main='',col = 'orange')
+boxplot(TheraBank$Experience..in.years.,xlab='Experience',horizontal = T,col='orange')
+hist(TheraBank$Experience..in.years.,xlab = 'Experience',main=' ',col='orange')
+boxplot(TheraBank$Income..in.K.month.,xlab='Income',horizontal = T,col='orange')
+hist(TheraBank$Income..in.K.month.,xlab = 'Income',main='',col = 'orange')
+boxplot(TheraBank$Mortgage,xlab="Mortgage",horizontal = T,col = 'orange')
+hist(TheraBank$Mortgage,xlab = 'Mortgage',main = '',col = 'orange')
+boxplot(TheraBank$CCAvg,xlab='Avg Spend',horizontal = T,col = 'orange')
+hist(TheraBank$CCAvg,xlab = 'Avg Spend',main = '',col = 'orange')
+
+```
+
+Barplots of factor attributes
+```{r}
+qplot(TheraBank$Family.members,data = TheraBank,geom = 'bar',xlab = 'Family size',ylab = 'count ')
+qplot(TheraBank$Education,data = TheraBank,geom = 'bar',xlab = 'Education',ylab = 'count')
+qplot(TheraBank$Personal.Loan,data = TheraBank,geom='bar',xlab = 'Personal Loan',ylab = 'count')
+qplot(TheraBank$Securities.Account,data = TheraBank,geom = 'bar',xlab = 'Securities Account',ylab = 'count')
+qplot(TheraBank$CD.Account,data = TheraBank,geom = 'bar',xlab = 'CD Account',ylab = 'count')
+qplot(TheraBank$Online,data = TheraBank,geom = 'bar',xlab = 'Online',ylab = 'count')
+qplot(TheraBank$CreditCard,data = TheraBank,geom = 'bar',xlab = 'Credit Card',ylab = 'count')
+```
+
+```{r}
+str(TheraBank)
+```
+
+Corelation plot
+```{r}
+corrplot(cor(TheraBank[c(2,3,4,7,9)]))
+```
+
+Chisquare tests to determine relation between independent variable and dependent variable
+```{r}
+chisq.test(TheraBank$Education,TheraBank$Personal.Loan)$p.value
+chisq.test(TheraBank$Family.members,TheraBank$Personal.Loan)$p.value
+chisq.test(TheraBank$Securities.Account,TheraBank$Personal.Loan)$p.value
+chisq.test(TheraBank$CD.Account,TheraBank$Personal.Loan)$p.value
+chisq.test(TheraBank$Online,TheraBank$Personal.Loan)$p.value
+chisq.test(TheraBank$CreditCard,TheraBank$Personal.Loan)$p.value
+
+```
+
+
+Some barplots to check the relation between some continuous variables and dependent variable(Personal Income)
+```{r}
+ggplot(data = TheraBank,aes(x=Education,fill=Personal.Loan))+geom_bar(stat = 'count')+theme_minimal()
+```
+
+
+```{r}
+ggplot(data = TheraBank,aes(x=CD.Account,fill=Personal.Loan))+geom_bar(stat = 'count')
+```
+
+
+```{r}
+ggplot(data = TheraBank,aes(TheraBank$Age..in.years.,fill=Personal.Loan))+geom_bar()+labs(x='Age in years')
+```
+
+```{r}
+ggplot(data = TheraBank,aes(TheraBank$Experience..in.years.,fill=Personal.Loan))+geom_bar()+labs(x='Experience in years')
+```
+
+```{r}
+ggplot(data = TheraBank,aes(TheraBank$Income..in.K.month.,fill=Personal.Loan))+geom_bar()+labs(x='Income')
+```
+
+
+```{r}
+ggplot(data = TheraBank,aes(TheraBank$CCAvg,fill=Personal.Loan))+geom_histogram()+labs(x='Average Spend')
+```
+
+```{r}
+ggplot(data = TheraBank,aes(TheraBank$Mortgage,fill=Personal.Loan))+geom_histogram()+labs(x='Mortgage')
+```
+
+
+
+Determining number of clusters and scaling the number attributes before clustering
+```{r}
+TheraBank.num = TheraBank[c(2,3,4,7,9)]
+TheraBank.num.scaled = scale(TheraBank.num)
+```
+
+
+
+NbClust Method:
+```{r}
+list.methods = c("kl", "ch", "hartigan", "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin", "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "frey", "mcclain", "dunn", "sdindex", "sdbw")
+list.distance = c("method","manhattan")
+
+nbctabl = as.data.frame(matrix(ncol = length(list.distance), nrow = length(list.methods)))
+names(nbctabl) = list.distance
+
+for(i in 1:length(list.methods)){
+
+nb = NbClust(TheraBank.num.scaled, distance = 'manhattan',
+             min.nc = 2, max.nc = 10, method='kmeans',
+             index =list.methods[i])
+nbctabl[i,2] = nb$Best.nc[1]
+nbctabl[i,1] = list.methods[i]
+}
+```
+
+
+```{r}
+table(nbctabl$manhattan)
+```
+
+
+
+```{r}
+
+gap_stat = clusGap(TheraBank.num.scaled, FUN = kmeans, K.max = 10, B = 20)
+
+fviz_gap_stat(gap_stat) + theme_minimal() + ggtitle("fviz_gap_stat: Gap Statistic")
+```
+
+```{r}
+fviz_nbclust(TheraBank.num.scaled, kmeans, method = "silhouette", k.max = 10) + theme_minimal() + ggtitle("The Silhouette Plot")
+```
+
+WSS/BSS method
+```{r}
+wss=c()
+bss=c()
+for (i in 1:10){
+  set.seed(123)
+  wss[i]=sum(kmeans(TheraBank.num.scaled,centers = i)$withinss)
+  bss[i]=sum(kmeans(TheraBank.num.scaled,centers = i)$betweenss)
+}
+
+```
+
+```{r}
+ss=data.frame(key=c(1:10),wss,bss)
+```
+
+```{r}
+
+ggplot(data = ss,aes(x=key,y=bss))+geom_line(data=ss,stat = 'identity',na.rm=T,col='blue')+geom_point(col='black')+theme_minimal()+labs(x='Number of Clusters(k)',title='BSS Plot')+scale_x_continuous(breaks = ss$key)
+```
+
+
+```{r}
+ggplot(data = ss,aes(x=key,y=wss))+geom_line(data=ss,stat = 'identity',na.rm=T,col='blue')+geom_point(col='black')+theme_minimal()+labs(x='Number of Clusters(k)',title='WSS Plot')+scale_x_continuous(breaks = ss$key)
+```
+
+
+#Kmeans Clustering with 3 centres
+
+```{r}
+set.seed(1000)
+clusters = kmeans(TheraBank.num.scaled,centers = 3,nstart = 1)
+```
+
+```{r}
+clusplot(TheraBank.num.scaled,clusters$cluster,color = T,labels = T,shade = T,lines = 1)
+
+```
+
+
+```{r}
+TheraBank$cluster=clusters$cluster
+```
+
+```{r}
+Profiles = aggregate(TheraBank[c(2,3,4,7,9)],by=list(TheraBank$cluster),FUN = mean)
+Profiles
+```
+
+```{r}
+table(TheraBank$cluster,TheraBank$Personal.Loan)
+```
+
+```{r}
+distmatrix=dist(TheraBank.num.scaled,method = 'manhattan')
+cluster2 = hclust(distmatrix,method = 'complete')
+plot(cluster2)
+rect.hclust(cluster2,k=3,border=2)
+```
+
+
+
+#Decision Tree
+Taking out unwanted variables
+```{r}
+TheraBank.CART = TheraBank[-c(1,5)]
+```
+
+splitting data into Train and test sets
+```{r}
+set.seed('1234')
+nsize = nrow(TheraBank.CART)*.70
+trainidx = sample(nrow(TheraBank.CART),size=nsize,replace = F)
+traindata = TheraBank.CART[trainidx,]
+testdata = TheraBank.CART[-trainidx,]
+```
+
+```{r}
+r.control= rpart.control(minbucket = 10,cp=0,xval = 10)
+DTree = rpart(Personal.Loan~.,data = traindata,control = r.control,method = 'class')
+```
+
+```{r}
+rpart.plot(DTree)
+```
+
+```{r}
+print(DTree)
+```
+
+```{r}
+plotcp(DTree)
+```
+
+```{r}
+summary(DTree)
+```
+
+Model performance measurement using Confusion matrix, AUC, KS and Gini.
+```{r}
+traindata$predicted.class=predict(DTree,traindata,'class')
+traindata$predicted.prob=predict(DTree,traindata,'prob')[,"1"]
+```
+
+
+```{r}
+table(traindata$Personal.Loan,traindata$predicted.class)
+```
+
+```{r}
+TPR=294/(294+35)
+TPR
+TNR=3162/(3162+9)
+TNR
+Accuracy=(3162+294)/nrow(traindata)
+Accuracy
+
+```
+
+
+```{r}
+testdata$predicted.class=predict(DTree,testdata,'class')
+testdata$predicted.prob=predict(DTree,testdata,'prob')[,"1"]
+```
+
+```{r}
+table(testdata$Personal.Loan,testdata$predicted.class)
+```
+
+```{r}
+TPR=131/(131+20)
+TPR
+TNR=1343/(1343+6)
+TNR
+Accuracy=(1343+131)/nrow(testdata)
+Accuracy
+```
+
+```{r}
+predObj = prediction(testdata$predicted.prob, testdata$Personal.Loan)
+perf = performance(predObj, "tpr", "fpr")
+plot(perf)
+
+```
+
+```{r}
+KS = max(perf@y.values[[1]]-perf@x.values[[1]])
+KS
+auc = performance(predObj,"auc"); 
+auc = as.numeric(auc@y.values)
+auc
+```
+
+```{r}
+gini = ineq(testdata$predicted.prob, type="Gini")
+gini
+```
+
+RANDOM FOREST
+
+```{r}
+set.seed('5678')
+nsize = nrow(TheraBank.CART)*.70
+trainidx2 = sample(nrow(TheraBank.CART),size=nsize,replace = F)
+traindata2 = TheraBank.CART[trainidx2,]
+testdata2 = TheraBank.CART[-trainidx2,]
+```
+
+Creating initial forest with 501 trees and taking 3 attributes in each split
+```{r}
+set.seed(1000)
+rndfor = randomForest(Personal.Loan~.,data = traindata2,ntree=501,mtry=3,nodesize=10,importance=T)
+```
+
+```{r}
+plot(rndfor,main='')
+```
+
+
+```{r}
+plot(rndfor)
+legend("topright", c("OOB", "0", "1"), text.col=1:6, lty=1:3, col=1:3)
+```
+
+```{r}
+print(rndfor)
+```
+```{r}
+varimp=importance(rndfor)
+```
+
+```{r}
+
+```
+
+
+```{r}
+varImpPlot(rndfor, type=1, pch=20, col=1, cex=.5, main='')
+```
+
+
+```{r}
+trndfor = tuneRF(x=traindata2[-c(8)],
+                 y=traindata2$Personal.Loan,
+                 mtryStart = 3,
+                 stepFactor = 1.5,
+                 ntreeTry = 51,
+                 trace = T,
+                 plot = T,
+                 importance=T,
+                 doBest = T)
+```
+
+```{r}
+finalfor = randomForest(Personal.Loan~.,data = traindata2,ntree=51,mtry=3,nodesize=10,importance=T)
+```
+
+```{r}
+print(finalfor)
+```
+
+```{r}
+importance(finalfor)
+```
+
+
+```{r}
+traindata2$predicted.class = predict(finalfor,traindata2,'class')
+traindata2$predicted.prob = predict(finalfor,traindata2,'prob')[,"1"]
+testdata2$predicted.class = predict(finalfor,testdata2,'class')
+testdata2$predicted.prob = predict(finalfor,testdata2,'prob')[,"1"]
+```
+
+```{r}
+table(traindata2$Personal.Loan,traindata2$predicted.class)
+```
+
+```{r}
+TPR = 325/(325+20)
+TPR
+TNR = 3154/(3154+1)
+TNR
+Accuracy = (3154+325)/nrow(traindata2)
+Accuracy
+```
+
+```{r}
+table(testdata2$Personal.Loan,testdata2$predicted.class)
+```
+
+```{r}
+TPR = 118/(118+17)
+TPR
+TNR = 1360/(1360+5)
+TNR
+Accuracy = (1360+118)/nrow(testdata2)
+Accuracy
+```
+
+```{r}
+predObj2 = prediction(testdata2$predicted.prob, testdata2$Personal.Loan)
+perf2 = performance(predObj2, "tpr", "fpr")
+plot(perf2)
+```
+
+```{r}
+KS2 = max(perf2@y.values[[1]]-perf2@x.values[[1]])
+KS2
+auc2 = performance(predObj2,"auc"); 
+auc2 = as.numeric(auc2@y.values)
+auc2
+```
+
+```{r}
+gini2 = ineq(testdata2$predicted.prob, type="Gini")
+gini2
+```
+
